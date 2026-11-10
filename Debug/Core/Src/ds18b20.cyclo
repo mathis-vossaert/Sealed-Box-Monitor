@@ -1,0 +1,11 @@
+../Core/Src/ds18b20.c:38:6:ds18b20_init	1
+../Core/Src/ds18b20.c:56:15:ds18b20_is_busy	1
+../Core/Src/ds18b20.c:68:19:ds18b20_last_error	1
+../Core/Src/ds18b20.c:80:19:ds18b20_update_rom_id	1
+../Core/Src/ds18b20.c:92:10:ds18b20_cnv	1
+../Core/Src/ds18b20.c:110:10:ds18b20_conf	9
+../Core/Src/ds18b20.c:170:6:ds18b20_is_cnv_done	1
+../Core/Src/ds18b20.c:199:10:ds18b20_req_read	1
+../Core/Src/ds18b20.c:214:9:ds18b20_read_c	10
+../Core/Src/ds18b20.c:292:9:ds18b20_cnv_to_f	2
+../Core/Src/ds18b20.c:312:19:ds18b20_read_last_cnv_bit	1

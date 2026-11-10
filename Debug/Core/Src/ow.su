@@ -1,0 +1,12 @@
+../Core/Src/ow.c:62:6:ow_init	24	static
+../Core/Src/ow.c:113:6:ow_callback	176	static
+../Core/Src/ow.c:145:9:ow_crc	32	static
+../Core/Src/ow.c:175:6:ow_is_busy	16	static
+../Core/Src/ow.c:187:10:ow_last_error	16	static
+../Core/Src/ow.c:236:10:ow_update_rom_id	16	static
+../Core/Src/ow.c:276:10:ow_xfer	32	static
+../Core/Src/ow.c:349:10:ow_xfer_by_id	40	static
+../Core/Src/ow.c:428:9:ow_devices	16	static
+../Core/Src/ow.c:443:10:ow_read_resp	32	static
+../Core/Src/ow.c:489:10:ow_start	32	static
+../Core/Src/ow.c:530:6:ow_stop	24	static
