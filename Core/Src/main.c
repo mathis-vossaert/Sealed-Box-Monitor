@@ -16,6 +16,8 @@
 #include "ds18b20.h"                            // Temperature sensor
 #include <stdio.h>
 #include <math.h>
+#include "ssd1306.h"							// OLED I2C Screen for debugging
+#include "ssd1306_fonts.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -27,16 +29,21 @@
 /* USER CODE BEGIN PD */
 #define HIH_I2C_ADDRESS (0x27 << 1)             // I2C address for the HIH sensor
 #define HUMIDITY_SAMPLES 10                     // Moving average sample count
+#define SCREEN_I2C_ADDRESS (0x78 << 1)
 
 // Temperature alarm thresholds with hysteresis
-#define COMP_TEMP_HIGH_THRESH 50.0f             // Trigger high alarm above this
-#define COMP_TEMP_HIGH_CLEAR  45.0f             // Clear high alarm below this
+#define COMP_TEMP_HIGH_THRESH  50.0f            // Trigger high alarm above this
+#define COMP_TEMP_HIGH_CLEAR   45.0f            // Clear high alarm below this
 #define COMP_TEMP_LOW_THRESH   0.0f             // Trigger low alarm below this
 #define COMP_TEMP_LOW_CLEAR    5.0f             // Clear high alarm above this
-#define BOX_TEMP_HIGH_THRESH 50.0f              // Trigger high alarm above this
-#define BOX_TEMP_HIGH_CLEAR  45.0f              // Clear high alarm below this
-#define BOX_TEMP_LOW_THRESH   0.0f              // Trigger low alarm below this
-#define BOX_TEMP_LOW_CLEAR    5.0f              // Clear high alarm above this
+#define BOX_TEMP_HIGH_THRESH   50.0f            // Trigger high alarm above this
+#define BOX_TEMP_HIGH_CLEAR    45.0f            // Clear high alarm below this
+#define BOX_TEMP_LOW_THRESH    0.0f             // Trigger low alarm below this
+#define BOX_TEMP_LOW_CLEAR     5.0f             // Clear high alarm above this
+#define DEW_POINT_ALARM_DIFF   3.0f				// Trigger dew alarm above this
+#define DEW_POINT_CLEAR_DIFF   5.0f				// CLear dew alarm below this
+#define HUMIDITY_HIGH_THRESH   60.0f			// Trigger high alarm above this
+#define HUMIDITY_HIGH_CLEAR    55.0f			// Clear high alarm below this
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -78,16 +85,20 @@ uint8_t humidity_buffer_index = 0;
 uint8_t humidity_buffer_filled = 0;             // Startup buffer initialization flag
 
 // Alarm states
-static uint8_t humidity_alarm = 0;
-static uint8_t dew_alarm = 0;
-static uint8_t water_alarm = 0;
-static uint8_t door_alarm = 0;
+static uint8_t humidity_alarm = 0;				// High humidity alarm
+static uint8_t dew_alarm = 0;					// Condensation danger alarm
+static uint8_t water_alarm = 0;					// Water intrusion alarm
+static uint8_t door_alarm = 0;					// Door opened alarm
 static uint8_t box_temp_alarm = 0;              // Out-of-range alarm for box temp
 static uint8_t comp_temp_alarm = 0;             // Out-of-range alarm for component temp
+uint16_t status_word = 0;
 
 // Fault flags
 uint8_t ds18_fault = 0;
 uint8_t hih_fault = 0;
+
+//Screen Display
+uint8_t display_initialized = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -96,6 +107,7 @@ void SystemClock_Config(void);
 void Process_Analog_Sensors(void);
 void Process_Digital_Sensors(void);
 void Transmit_Telemetry(void);
+void Screen_Display(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -177,8 +189,9 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
       Process_Analog_Sensors();
-      Process_Digital_Sensors();
+      Process_Digital_Sensors();     //possibility to add
       Transmit_Telemetry();
+      Screen_Display();
 
       // IWDG Refresh
       HAL_IWDG_Refresh(&hiwdg);
@@ -267,7 +280,7 @@ void Process_Analog_Sensors(void)
             break;
         }
     }
-
+    //Fault if data is stuck with sensor's initialized value
     float temp_read = ds18b20_read_c(&ds18);
     if (temp_read != 85.0f && temp_read != -127.0f) {
         component_temp = temp_read;
@@ -309,16 +322,16 @@ void Process_Analog_Sensors(void)
                 box_temp_alarm = 0;
             }
 
-            // Moving average of 10 values
+            // Average of 10 values
             if (!humidity_buffer_filled) {
-                for (int i = 0; i < HUMIDITY_SAMPLES; i++) {
+                for (int i = 0; i < HUMIDITY_SAMPLES; i++) { //First 10 values directly used
                     humidity_buffer[i] = raw_humidity;
                 }
                 humidity_buffer_filled = 1;
             }
 
             humidity_buffer[humidity_buffer_index] = raw_humidity;
-            humidity_buffer_index = (humidity_buffer_index + 1) % HUMIDITY_SAMPLES;
+            humidity_buffer_index = (humidity_buffer_index + 1) % HUMIDITY_SAMPLES; //Removes the oldest value for the newest
 
             float sum = 0.0f;
             for (int j = 0; j < HUMIDITY_SAMPLES; j++) {
@@ -326,7 +339,7 @@ void Process_Analog_Sensors(void)
             }
             box_humidity = sum / (float)HUMIDITY_SAMPLES;
 
-            // Humidity Alarm Logic (> 60% for 1h continuously)
+            // Humidity Alarm Logic (> 60% for 1h)
             if (box_humidity > 60.0f) {
                 current_tick_humidity = HAL_GetTick();
                 if (current_tick_humidity - previous_tick_humidity >= interval_humidity) {
@@ -344,7 +357,7 @@ void Process_Analog_Sensors(void)
             float safe_humidity = box_humidity;
             if (safe_humidity < 0.1f) {
                 safe_humidity = 0.1f;
-            } else if (safe_humidity > 100.0f) {
+            } else if (safe_humidity > 100.0f) {         //safe_humidity to exclude undefined domain values for log(x)
                 safe_humidity = 100.0f;
             }
 
@@ -398,8 +411,8 @@ void Process_Digital_Sensors(void)
   */
 void Transmit_Telemetry(void)
 {
-    // Construct status word (bitmask)
-    uint16_t status_word = 0;
+    // Construct status word (bitmask) including all faults and alarms of the system
+    status_word = 0;
     if (humidity_alarm)    status_word |= (1 << 0); // Bit 0
     if (dew_alarm)         status_word |= (1 << 1); // Bit 1
     if (water_alarm)       status_word |= (1 << 2); // Bit 2
@@ -419,8 +432,52 @@ void Transmit_Telemetry(void)
             length = sizeof(buffer) - 1;
         }
         HAL_UART_Transmit(&huart2, (uint8_t*)buffer, (uint16_t)length, 1000);
-        door_alarm = 0;  // Reset door latch alarm after transmission
+        door_alarm = 0;  // Reset door latch alarm after transmission, to prevent missing a quick door opening
     }
+}
+/**
+  * @brief  Reads and debounces GPIO digital sensors (Water & Door)
+  */
+void Screen_Display(void)
+{
+	//Verify screen is connected
+	if (HAL_I2C_IsDeviceReady(&hi2c1, SCREEN_I2C_ADDRESS, 1, 50) == HAL_OK) {
+
+		        //Verify if screen has been initialized
+		        if (display_initialized == 0) {
+		        	ssd1306_Init();
+		            display_initialized = 1;
+		        }
+		                // Convert data
+		                char buf1[32];
+		                char buf2[32];
+		                char buf3[32];
+		                snprintf(buf1, sizeof(buf1), "Temp: %.1f C", box_temp);
+		                snprintf(buf2, sizeof(buf2), "Hum: %.1f %%", box_humidity);
+		                snprintf(buf3, sizeof(buf3), "Status: 0x%02X", status_word);
+
+		                // Refresh display
+		                ssd1306_Fill(Black);
+
+		                // Writing process
+		                ssd1306_SetCursor(2, 10);
+		                ssd1306_WriteString(buf1, Font_11x18, White);
+		                ssd1306_SetCursor(2, 35);
+		                ssd1306_WriteString(buf2, Font_11x18, White);
+		                ssd1306_SetCursor(2, 60);
+		                ssd1306_WriteString(buf3, Font_11x18, White);
+
+		                // Execute changes
+		                ssd1306_UpdateScreen();
+
+	}
+		        else
+		            {
+		                // No screen detected, force intialization to 0 for next cycle
+		                display_initialized = 0;
+		            }
+
+
 }
 
 /* USER CODE END USER_CODE_4 */

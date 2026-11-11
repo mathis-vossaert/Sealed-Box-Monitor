@@ -1,7 +1,8 @@
-../Core/Src/main.c:105:6:ds18_tim_cb	16	static
-../Core/Src/main.c:117:5:main	40	static
-../Core/Src/main.c:193:6:SystemClock_Config	88	static
-../Core/Src/main.c:235:6:Process_Analog_Sensors	80	static
-../Core/Src/main.c:369:6:Process_Digital_Sensors	8	static
-../Core/Src/main.c:399:6:Transmit_Telemetry	208	static
-../Core/Src/main.c:432:6:Error_Handler	8	static,ignoring_inline_asm
+../Core/Src/main.c:117:6:ds18_tim_cb	16	static
+../Core/Src/main.c:129:5:main	40	static
+../Core/Src/main.c:206:6:SystemClock_Config	88	static
+../Core/Src/main.c:248:6:Process_Analog_Sensors	80	static
+../Core/Src/main.c:382:6:Process_Digital_Sensors	8	static
+../Core/Src/main.c:412:6:Transmit_Telemetry	216	static
+../Core/Src/main.c:441:6:Screen_Display	120	static
+../Core/Src/main.c:489:6:Error_Handler	8	static,ignoring_inline_asm
