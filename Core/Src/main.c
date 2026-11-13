@@ -29,7 +29,7 @@
 /* USER CODE BEGIN PD */
 #define HIH_I2C_ADDRESS (0x27 << 1)             // I2C address for the HIH sensor
 #define HUMIDITY_SAMPLES 10                     // Moving average sample count
-#define SCREEN_I2C_ADDRESS (0x78 << 1)
+#define SCREEN_I2C_ADDRESS (0x3C << 1)
 
 // Temperature alarm thresholds with hysteresis
 #define COMP_TEMP_HIGH_THRESH  50.0f            // Trigger high alarm above this
@@ -188,13 +188,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-      Process_Analog_Sensors();
-      Process_Digital_Sensors();     //possibility to add
-      Transmit_Telemetry();
-      Screen_Display();
+      Process_Analog_Sensors();			// Collect HIH8131 (box temperature and humidity) and DS18B20 (component temperature)
+      Process_Digital_Sensors();     	// Collect SEN0508 (Water) and Reed Switch (Door)
+      Transmit_Telemetry();				// Send data to CR1000X
+      Screen_Display();					// If wired, display data on 128 x 64 OLED Screen
 
-      // IWDG Refresh
-      HAL_IWDG_Refresh(&hiwdg);
+      HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2); //LEDs to help debug or show firmware/communication status
+      HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_1);
+
+      HAL_IWDG_Refresh(&hiwdg);			// IWDG Refresh
   }
   /* USER CODE END 3 */
 }
@@ -383,7 +385,7 @@ void Process_Digital_Sensors(void)
 {
     // Water Sensor
     water_state = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7);
-    if (water_state == GPIO_PIN_SET) {
+    if (water_state == GPIO_PIN_RESET) {
         current_tick_water = HAL_GetTick();
         if (current_tick_water - previous_tick_water >= interval_water) {
             water_alarm = 1;
@@ -446,6 +448,9 @@ void Screen_Display(void)
 		        //Verify if screen has been initialized
 		        if (display_initialized == 0) {
 		        	ssd1306_Init();
+		        	//Rotate the text 180, because the screen is physically reversed
+		        	ssd1306_WriteCommand(0xA0); // Inverse collumns
+		        	ssd1306_WriteCommand(0xC0); // Inverse rows (up/down)
 		            display_initialized = 1;
 		        }
 		                // Convert data
@@ -460,27 +465,24 @@ void Screen_Display(void)
 		                ssd1306_Fill(Black);
 
 		                // Writing process
-		                ssd1306_SetCursor(2, 10);
-		                ssd1306_WriteString(buf1, Font_11x18, White);
-		                ssd1306_SetCursor(2, 35);
+		                ssd1306_SetCursor(2, 2);
+		                ssd1306_WriteString(buf1, Font_11x18, White);    //We can use a smaller font if necessary; Font_7x10
+		                ssd1306_SetCursor(2, 22);
 		                ssd1306_WriteString(buf2, Font_11x18, White);
-		                ssd1306_SetCursor(2, 60);
+		                ssd1306_SetCursor(2, 42);
 		                ssd1306_WriteString(buf3, Font_11x18, White);
 
 		                // Execute changes
 		                ssd1306_UpdateScreen();
 
 	}
-		        else
-		            {
+    else  {
 		                // No screen detected, force intialization to 0 for next cycle
 		                display_initialized = 0;
-		            }
-
-
+    }
 }
 
-/* USER CODE END USER_CODE_4 */
+/* USER CODE END USER CODE 4 */
 
 /**
   * @brief  This function is executed in case of error occurrence.
